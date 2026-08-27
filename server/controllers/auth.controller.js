@@ -229,7 +229,7 @@ export async function logoutAll(req, res) {
 }
 
 export async function verifyEmail(req, res) {
-    const   { email, otp } = req.body
+    const { email, otp } = req.body
 
     const otpHash = crypto.createHash("sha256").update(otp).digest("hex")
 
@@ -246,13 +246,31 @@ export async function verifyEmail(req, res) {
 user: otpDoc.user           
      })
 
-     return res.status(200).json({
+    const refreshToken = jwt.sign({ id: user._id }, config.JWT_SECRET, { expiresIn: "7d" });
+    const refreshTokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
+    const session = await sessionModel.create({
+        userId: user._id,
+        refreshTokenHash,
+        ip: req.ip,
+        userAgent: req.headers["user-agent"]
+    });
+    const accessToken = jwt.sign({ id: user._id, sessionId: session._id }, config.JWT_SECRET, { expiresIn: "15m" });
+
+    res.cookie("refreshtoken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    return res.status(200).json({
         message: "Email verified successfully",
         user: {
             username: user.username,
             email: user.email,
             verified: user.verified
-        }
+        },
+        accesstoken: accessToken
     })
 
 }
